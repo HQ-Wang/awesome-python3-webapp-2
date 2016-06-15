@@ -2,13 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="2227d4b0-a189-4c75-ae06-113f42b2e231" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/www/orm.py" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/www/test.py" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/www/test" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/awesome-python3-webapp.iml" afterPath="$PROJECT_DIR$/.idea/awesome-python3-webapp.iml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/misc.xml" afterPath="$PROJECT_DIR$/.idea/misc.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/www/app.py" afterPath="$PROJECT_DIR$/www/app.py" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/www/orm.py" afterPath="$PROJECT_DIR$/www/orm.py" />
     </list>
     <ignored path="awesome-python3-webapp.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -47,8 +41,8 @@
       <file leaf-file-name="orm.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/www/orm.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="302">
-              <caret line="34" column="33" selection-start-line="34" selection-start-column="4" selection-end-line="34" selection-end-column="36" />
+            <state relative-caret-position="659">
+              <caret line="72" column="23" selection-start-line="72" selection-start-column="23" selection-end-line="72" selection-end-column="23" />
               <folding>
                 <element signature="e#78#101#0" expanded="true" />
               </folding>
@@ -579,8 +573,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/www/orm.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="302">
-          <caret line="34" column="33" selection-start-line="34" selection-start-column="4" selection-end-line="34" selection-end-column="36" />
+        <state relative-caret-position="659">
+          <caret line="72" column="23" selection-start-line="72" selection-start-column="23" selection-end-line="72" selection-end-column="23" />
           <folding>
             <element signature="e#78#101#0" expanded="true" />
           </folding>
