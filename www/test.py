@@ -1,6 +1,7 @@
-#!/usr/bin/python
-
-dict = {'Name': 'Zara', 'Age': 7}
-
-print("Value : %s" %  dict.get('Age'))
-print("Value : %s" %  dict.get('Age', "8"))
+#!/usr/bin/python3
+L = []
+for n in range(5):
+    L.append('?')
+l = ', '.join(L)
+print(L)
+print(l)
