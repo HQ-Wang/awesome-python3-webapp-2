@@ -125,20 +125,32 @@ class TextField(Field):
 
 class ModelMetaclass(type):
 
+    # __new__()方法优先级高于__init__(),用于对类名，基类，类属性进行修改
+    # 作用是把类和数据库表做一个映射，如经过__new__()方法将User类重建
+    # 这样做的好处是把类属性创建和创建数据库映射相互分开，利于维护
+    # 最后修改完成的类具有1个反映映射关系的__mappings__属性，1个表名属性，2个键值属性和4个sql语句属性共8个属性
     def __new__(cls, name, bases, attrs):
+        # cls类似于self
+        # name为类名，如'User'
+        # bases为list型基类合集，这里似乎没什么用
+        # attrs为dict型类属性合集，如User类中的类属性key-value合集
         if name=='Model':
+            # 这里排除对Model类的修改，如果发现是Model类，直接结束__new__()方法
+            # 因为Model类是用来定义各种方法的，不涉及类属性创建，不需要修改
             return type.__new__(cls, name, bases, attrs)
         tableName = attrs.get('__table__', None) or name
+        # 数据库表名，若User类中定义了'__table__'则作为表名，否则就以类名User作为表名
         logging.info('found model: %s (table: %s)' % (name, tableName))
         mappings = dict()
         fields = []
         primaryKey = None
+        # 将类属性打包到mappings这个dict中
         for k, v in attrs.items():
             if isinstance(v, Field):
                 logging.info('  found mapping: %s ==> %s' % (k, v))
                 mappings[k] = v
                 if v.primary_key:
-                    # 找到主键:
+                    # 找到主键，主键只有一个，所有Field子类都默认没有主键
                     if primaryKey:
                         raise StandardError('Duplicate primary key for field: %s' % k)
                     primaryKey = k
@@ -149,12 +161,123 @@ class ModelMetaclass(type):
         for k in mappings.keys():
             attrs.pop(k)
         escaped_fields = list(map(lambda f: '`%s`' % f, fields))
+        # 这里map外面要套一个list才能获得值，是python3的一个变化，至于原因现在太菜没太搞明白，似乎是为了提高运算效率
+        # 反引号``似乎是sql语句的语法要求
         attrs['__mappings__'] = mappings # 保存属性和列的映射关系
         attrs['__table__'] = tableName
         attrs['__primary_key__'] = primaryKey # 主键属性名
         attrs['__fields__'] = fields # 除主键外的属性名
+        # 以下四句均为sql语句，'?'表示占位符，用于动态赋值
         attrs['__select__'] = 'select `%s`, %s from `%s`' % (primaryKey, ', '.join(escaped_fields), tableName)
         attrs['__insert__'] = 'insert into `%s` (%s, `%s`) values (%s)' % (tableName, ', '.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
         attrs['__update__'] = 'update `%s` set %s where `%s`=?' % (tableName, ', '.join(map(lambda f: '`%s`=?' % (mappings.get(f).name or f), fields)), primaryKey)
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primaryKey)
         return type.__new__(cls, name, bases, attrs)
+
+# Model类这里作为基类使用，负责定义各种方法将继承到子类
+class Model(dict, metaclass=ModelMetaclass):
+
+    # __init__()方法，**kw为关键字参数，可以传入任意多的dict参数。配合__getattr__()方法使用
+    def __init__(self, **kw):
+        super(Model, self).__init__(**kw)
+
+    # 定义__getattr__()方法，根据key获取实例属性的value
+    # __getattr__()是为了调用**kw关键字参数，通过**kw参数传入的dict不在__dict__属性中，无法直接用self.key调用
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(r"'Model' object has no attribute '%s'" % key)
+
+    # 定义__setattr__()方法，可添加和修改实例属性，与__getattr__()方法配套使用
+    def __setattr__(self, key, value):
+        self[key] = value
+
+    # 定义getValue()方法，实际将调用__getattr__()使用，若没有key值，则返回None
+    def getValue(self, key):
+        return getattr(self, key, None)
+
+    # 定义getValueOrDefault()方法，根据key获取实例属性，如果没有实例属性，则获取类的默认属性，如果连默认属性也没有，返回None
+    def getValueOrDefault(self, key):
+        value = getattr(self, key, None)
+        # getattr()方法是python内置方法，等效于value = self.key，如果没有self.key则value = None
+        # 详见https://docs.python.org/3/library/functions.html?highlight=getattr#getattr
+        if value is None:
+            field = self.__mappings__[key]
+            # __mappings__由元类定义，dict类型的类属性合集，其值为field类的实例
+            if field.default is not None:
+                value = field.default() if callable(field.default) else field.default
+                # 这里很奇怪，Field类中并没有写default()方法，感觉这里是为了扩展default()方法所留下的一个伏笔
+                # field.default作为一个属性是不能callable的，所以这里等效于value = field.default
+                logging.debug('using default value for %s: %s' % (key, str(value)))
+                setattr(self, key, value)
+                # python内置方法，详见https://docs.python.org/3/library/functions.html?highlight=getattr#setattr
+        return value
+
+    # 由@classmethod修饰的方法为类方法，可以对类属性进行操作，可以继承到子类，当子类使用类方法时clc值将是子类
+    @classmethod
+    async def findAll(cls, where=None, args=None, **kw):
+        ' find objects by where clause. '
+        sql = [cls.__select__]
+        if where:
+            sql.append('where')
+            sql.append(where)
+        if args is None:
+            args = []
+        orderBy = kw.get('orderBy', None)
+        if orderBy:
+            sql.append('order by')
+            sql.append(orderBy)
+        limit = kw.get('limit', None)
+        if limit is not None:
+            sql.append('limit')
+            if isinstance(limit, int):
+                sql.append('?')
+                args.append(limit)
+            elif isinstance(limit, tuple) and len(limit) == 2:
+                sql.append('?, ?')
+                args.extend(limit)
+            else:
+                raise ValueError('Invalid limit value: %s' % str(limit))
+        rs = await select(' '.join(sql), args)
+        return [cls(**r) for r in rs]
+
+    @classmethod
+    async def findNumber(cls, selectField, where=None, args=None):
+        ' find number by select and where. '
+        sql = ['select %s _num_ from `%s`' % (selectField, cls.__table__)]
+        if where:
+            sql.append('where')
+            sql.append(where)
+        rs = await select(' '.join(sql), args, 1)
+        if len(rs) == 0:
+            return None
+        return rs[0]['_num_']
+
+    @classmethod
+    async def find(cls, pk):
+        ' find object by primary key. '
+        rs = await select('%s where `%s`=?' % (cls.__select__, cls.__primary_key__), [pk], 1)
+        if len(rs) == 0:
+            return None
+        return cls(**rs[0])
+
+    async def save(self):
+        args = list(map(self.getValueOrDefault, self.__fields__))
+        args.append(self.getValueOrDefault(self.__primary_key__))
+        rows = await execute(self.__insert__, args)
+        if rows != 1:
+            logging.warn('failed to insert record: affected rows: %s' % rows)
+
+    async def update(self):
+        args = list(map(self.getValue, self.__fields__))
+        args.append(self.getValue(self.__primary_key__))
+        rows = await execute(self.__update__, args)
+        if rows != 1:
+            logging.warn('failed to update by primary key: affected rows: %s' % rows)
+
+    async def remove(self):
+        args = [self.getValue(self.__primary_key__)]
+        rows = await execute(self.__delete__, args)
+        if rows != 1:
+            logging.warn('failed to remove by primary key: affected rows: %s' % rows)
