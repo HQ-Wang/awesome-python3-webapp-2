@@ -7,6 +7,8 @@ import asyncio, logging
 
 import aiomysql
 
+import logging
+logging.basicConfig(level=logging.INFO)
 # 编写log函数：用于打印sql语句
 def log(sql, args=()):
     logging.info('SQL: %s' % sql)
@@ -52,6 +54,7 @@ async def select(sql, args, size=None):
                 # 否则获取全部行信息，
                 rs = await cur.fetchall()
                 # 详见http://aiomysql.readthedocs.io/en/latest/cursors.html?highlight=fetchmany#Cursor.fetchall
+                # 官方注解有误，这里rs返回的是一个list，其中的元素都是dict，类似[{'id':1, 'passwd':123},{'id':2, 'passwd':456}]这样
         logging.info('rows returned: %s' % len(rs))
         return rs
 
@@ -150,7 +153,7 @@ class ModelMetaclass(type):
                 logging.info('  found mapping: %s ==> %s' % (k, v))
                 mappings[k] = v
                 if v.primary_key:
-                    # 找到主键，主键只有一个，所有Field子类都默认没有主键
+                    # 找到主键，主键只有一个，所有Field子类都默认没有主键,但都可以设为主键，这里统一将id设为主键
                     if primaryKey:
                         raise StandardError('Duplicate primary key for field: %s' % k)
                     primaryKey = k
@@ -170,7 +173,7 @@ class ModelMetaclass(type):
         # 以下四句均为sql语句，'?'表示占位符，用于动态赋值
         attrs['__select__'] = 'select `%s`, %s from `%s`' % (primaryKey, ', '.join(escaped_fields), tableName)
         attrs['__insert__'] = 'insert into `%s` (%s, `%s`) values (%s)' % (tableName, ', '.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
-        attrs['__update__'] = 'update `%s` set %s where `%s`=?' % (tableName, ', '.join(map(lambda f: '`%s`=?' % (mappings.get(f).name or f), fields)), primaryKey)
+        attrs['__update__'] = 'update `%s` set %s where `%s`=?' % (tableName, ', '.join(map(lambda f: '`%s`=?' % f, fields)), primaryKey)
         attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (tableName, primaryKey)
         return type.__new__(cls, name, bases, attrs)
 
@@ -215,9 +218,14 @@ class Model(dict, metaclass=ModelMetaclass):
         return value
 
     # 由@classmethod修饰的方法为类方法，可以对类属性进行操作，可以继承到子类，当子类使用类方法时clc值将是子类
+
+    # findAll()类方法，在数据库中寻找满足where判断的那一行数据，注意这里where参数要以''字符串形式传入
+    # sql语句最终形式类似于：select * from 'table_name' where 'id=1' order by 'id' limit ?
+    # 利用args变量传入sql语句中？部分的参数
     @classmethod
     async def findAll(cls, where=None, args=None, **kw):
         ' find objects by where clause. '
+        #
         sql = [cls.__select__]
         if where:
             sql.append('where')
@@ -241,11 +249,16 @@ class Model(dict, metaclass=ModelMetaclass):
                 raise ValueError('Invalid limit value: %s' % str(limit))
         rs = await select(' '.join(sql), args)
         return [cls(**r) for r in rs]
+        # 无法理解这里为什么要这么写，直接写return rs不就行了？
+        # cls（**r）for r in rs是一个generator object，所以和协程相关吗？
+        return rs
 
+    # 查找数据库中满足where判断的selectField列，输出该列的元素数目
     @classmethod
     async def findNumber(cls, selectField, where=None, args=None):
         ' find number by select and where. '
-        sql = ['select %s _num_ from `%s`' % (selectField, cls.__table__)]
+        sql = ['select count(%s) _num_ from `%s`' % (selectField, cls.__table__)]
+        # 这里把列名重命名了，相当于select id as _num_，方便后面return
         if where:
             sql.append('where')
             sql.append(where)
@@ -254,6 +267,7 @@ class Model(dict, metaclass=ModelMetaclass):
             return None
         return rs[0]['_num_']
 
+    # 通过主键（这里是id）来查找数据库中其他内容
     @classmethod
     async def find(cls, pk):
         ' find object by primary key. '
@@ -262,13 +276,20 @@ class Model(dict, metaclass=ModelMetaclass):
             return None
         return cls(**rs[0])
 
+    # 将实例的信息保存到数据库
     async def save(self):
+        # 以下两句是把实例的属性值按照__fields__和__primary_key__里的key顺序排列成一个list
         args = list(map(self.getValueOrDefault, self.__fields__))
         args.append(self.getValueOrDefault(self.__primary_key__))
+        # 把实例属性insert到数据库
         rows = await execute(self.__insert__, args)
         if rows != 1:
             logging.warn('failed to insert record: affected rows: %s' % rows)
+        else:
+            logging.info('save operation is successful')
 
+    # 修改数据库数据，通过主键（即id）判断要修改的行
+    # 修改时需要给出主键，注意主键是字符串
     async def update(self):
         args = list(map(self.getValue, self.__fields__))
         args.append(self.getValue(self.__primary_key__))
@@ -276,6 +297,7 @@ class Model(dict, metaclass=ModelMetaclass):
         if rows != 1:
             logging.warn('failed to update by primary key: affected rows: %s' % rows)
 
+    # 通过主键查找并删除数据库内所有的其他信息
     async def remove(self):
         args = [self.getValue(self.__primary_key__)]
         rows = await execute(self.__delete__, args)
