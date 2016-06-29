@@ -1,6 +1,3 @@
-from handlers import index
-from inspect import signature
-
-sig = signature(index).parameters.keys()
-
-print(sig)
+async def test(request):
+    params = await request.json()
+    print(params)

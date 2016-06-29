@@ -39,14 +39,26 @@ def post(path):
         return wrapper
     return decorator
 
+# 获得命名关键字参数的key名称，注意这里获得的key是没有指定默认值的
+# 顺便一说，这个函数的实现方式真的很python，对于只有c基础的我压力好大
 def get_required_kw_args(fn):
     args = []
+    # inspect.signature()是一个用来对函数参数进行检查的函数，返回一个Signature实例
+    # 可参考https://docs.python.org/3/library/inspect.html?highlight=inspect.signature#inspect.signature
+    # 这里paramaters: An ordered mapping of parameters’ names to the corresponding Parameter objects.
+    # 可参考https://docs.python.org/3/library/inspect.html?highlight=inspect.signature#inspect.Signature.parameters
     params = inspect.signature(fn).parameters
     for name, param in params.items():
+        # 这里name是参数名
+        # 这里param是inspect.Parameter实例，包括完整的参数信息
+        # para.kind和para.default用来判断参数是否是命名关键字参数同时是否是默认值为空
         if param.kind == inspect.Parameter.KEYWORD_ONLY and param.default == inspect.Parameter.empty:
+            # 如果参数为dict且没有默认值，则将参数名添加到args list中
             args.append(name)
     return tuple(args)
+    # 返回一个tuple类型的args
 
+# 获得命名关键字参数的key名，无论是否有默认值
 def get_named_kw_args(fn):
     args = []
     params = inspect.signature(fn).parameters
@@ -55,18 +67,22 @@ def get_named_kw_args(fn):
             args.append(name)
     return tuple(args)
 
+# 判断函数的参数是否是命名关键字参数，如果是，返回True
 def has_named_kw_args(fn):
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.KEYWORD_ONLY:
             return True
 
+# 判断函数的参数是否是关键字参数，如果是，返回True
 def has_var_kw_arg(fn):
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.VAR_KEYWORD:
             return True
 
+# 判断函数的参数是否有request，如果有，返回True，否则返回False
+# 注意这里要求request参数要在所有参数的最后，否则会报错，但依然会返回True
 def has_request_arg(fn):
     sig = inspect.signature(fn)
     params = sig.parameters
@@ -79,9 +95,11 @@ def has_request_arg(fn):
             raise ValueError('request parameter must be the last named parameter in function: %s%s' % (fn.__name__, str(sig)))
     return found
 
+# RequestHandler类，用于处理各种请求
 class RequestHandler(object):
 
     def __init__(self, app, fn):
+        # 初始化，根据fn的参数初始化实例属性
         self._app = app
         self._func = fn
         self._has_request_arg = has_request_arg(fn)
@@ -90,13 +108,21 @@ class RequestHandler(object):
         self._named_kw_args = get_named_kw_args(fn)
         self._required_kw_args = get_required_kw_args(fn)
 
+    # __call__()方法，可以将实例当作函数来调用，如rh = RequestHandler(app,fn); rh(request);
+    # 这里request参数是RequestHandler作为函数时所接收的参数
+    # 在aiohttp框架下，所有handler函数都只有一个参数即request，可参考http://aiohttp.readthedocs.io/en/stable/web.html#aiohttp-web-handler
+    # 同时，request参数是作为一个实例传入的，可以通过调用实例属性获得http请求的全部信息，可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#request
     async def __call__(self, request):
         kw = None
+        # 关键字参数，命名关键字参数和无默认值的命名关键字参数（这里重复了吧。。。），三者只要满足一个，则执行代码
         if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
             if request.method == 'POST':
+                # 检查request方法是否是POST
                 if not request.content_type:
                     return web.HTTPBadRequest('Missing Content-Type.')
                 ct = request.content_type.lower()
+                # request.content_type返回string类型的content_type
+                # str.lower()将str中大写全部转化成小写
                 if ct.startswith('application/json'):
                     params = await request.json()
                     if not isinstance(params, dict):
