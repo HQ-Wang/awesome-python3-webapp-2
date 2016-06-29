@@ -124,13 +124,19 @@ class RequestHandler(object):
                 # request.content_type返回string类型的content_type
                 # str.lower()将str中大写全部转化成小写
                 if ct.startswith('application/json'):
+                    # 当post的内容为json类型时，调用json()方法，将json语句译码为一个dict
                     params = await request.json()
                     if not isinstance(params, dict):
                         return web.HTTPBadRequest('JSON body must be object.')
                     kw = params
                 elif ct.startswith('application/x-www-form-urlencoded') or ct.startswith('multipart/form-data'):
                     params = await request.post()
+                    # post()方法返回一个MultiDictProxy实例（不懂这是个神马），是一个不可变的MultiDict，一个key，对应多个values
+                    # post()方法可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#aiohttp.web.Request.post
+                    # MultiDict可参考http://aiohttp.readthedocs.io/en/stable/multidict.html#multidict
+                    # MultiDictProxy可参考http://aiohttp.readthedocs.io/en/stable/multidict.html#multidictproxy
                     kw = dict(**params)
+                    # 将MultiDictProxy转换为dict，多个values的情况只会取第一个值（不懂为什么要两个**，直接dict(params)也可以）
                 else:
                     return web.HTTPBadRequest('Unsupported Content-Type: %s' % request.content_type)
             if request.method == 'GET':
