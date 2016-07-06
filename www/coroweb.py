@@ -40,7 +40,6 @@ def post(path):
     return decorator
 
 # 获得命名关键字参数的key名称，注意这里获得的key是没有指定默认值的
-# 顺便一说，这个函数的实现方式真的很python，对于只有c基础的我压力好大
 def get_required_kw_args(fn):
     args = []
     # inspect.signature()是一个用来对函数参数进行检查的函数，返回一个Signature实例
@@ -82,7 +81,7 @@ def has_var_kw_arg(fn):
             return True
 
 # 判断函数的参数是否有request，如果有，返回True，否则返回False
-# 注意这里要求request参数要在所有参数的最后，否则会报错，但依然会返回True
+# 注意这里要求request参数要在所有参数的最后，否则会报错
 def has_request_arg(fn):
     sig = inspect.signature(fn)
     params = sig.parameters
@@ -114,6 +113,7 @@ class RequestHandler(object):
     # 同时，request参数是作为一个实例传入的，可以通过调用实例属性获得http请求的全部信息，可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#request
     async def __call__(self, request):
         kw = None
+        # 检查fn的参数
         # 关键字参数，命名关键字参数和无默认值的命名关键字参数（这里重复了吧。。。），三者只要满足一个，则执行代码
         if self._has_var_kw_arg or self._has_named_kw_args or self._required_kw_args:
             if request.method == 'POST':
@@ -131,7 +131,7 @@ class RequestHandler(object):
                     kw = params
                 elif ct.startswith('application/x-www-form-urlencoded') or ct.startswith('multipart/form-data'):
                     params = await request.post()
-                    # post()方法返回一个MultiDictProxy实例（不懂这是个神马），是一个不可变的MultiDict，一个key，对应多个values
+                    # post()方法返回一个MultiDictProxy实例（不懂这是个神马），一个不可变的MultiDict，一个key，对应多个values
                     # post()方法可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#aiohttp.web.Request.post
                     # MultiDict可参考http://aiohttp.readthedocs.io/en/stable/multidict.html#multidict
                     # MultiDictProxy可参考http://aiohttp.readthedocs.io/en/stable/multidict.html#multidictproxy
@@ -140,13 +140,24 @@ class RequestHandler(object):
                 else:
                     return web.HTTPBadRequest('Unsupported Content-Type: %s' % request.content_type)
             if request.method == 'GET':
+                # 检查request方法是否是GET
                 qs = request.query_string
+                # 获取query_string查询语句，指URL中？后面的内容（为什么只取？后面）
+                # 参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#aiohttp.web.Request.query_string
                 if qs:
                     kw = dict()
                     for k, v in parse.parse_qs(qs, True).items():
+                        # parse.parse_qs()方法，将query string转换为dict返回，第二个参数True表示保留空白字符串，即那些没有赋值的变量
+                        # https://docs.python.org/3/library/urllib.parse.html?highlight=parse.parse_qs#urllib.parse.parse_qs
                         kw[k] = v[0]
+                        # parse_qs()取出的value是一个单元素的list，这里需要取出真正的value值
+        # 再次检查kw值，如果kw为零，表示URL中没有
         if kw is None:
             kw = dict(**request.match_info)
+            # match_info获取URL中的变量keys-values对，key值直接在定义的时候确定，value值会根据key值的位置在URL中自动提取
+            # 如get(/home/{name})，name是key值，实际URL请求时localhost/home/whq，whq是value值
+            # match_info应该是返回一个类似dict的实例（不确定，看不懂document）
+            # 可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#aiohttp.web.Request.match_info
         else:
             if not self._has_var_kw_arg and self._named_kw_args:
                 # remove all unamed kw:

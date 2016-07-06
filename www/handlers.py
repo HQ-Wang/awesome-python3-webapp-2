@@ -8,5 +8,5 @@ __author__ = 'Hongqing Wang'
 from coroweb import get, post
 
 @get('/')
-def index(*, page='1', a:int):
+def index(request, id, *, content):
     pass
