@@ -251,7 +251,6 @@ class Model(dict, metaclass=ModelMetaclass):
         return [cls(**r) for r in rs]
         # 无法理解这里为什么要这么写，直接写return rs不就行了？
         # cls（**r）for r in rs是一个generator object，所以和协程相关吗？
-        return rs
 
     # 查找数据库中满足where判断的selectField列，输出该列的元素数目
     @classmethod
