@@ -66,14 +66,14 @@ def get_named_kw_args(fn):
             args.append(name)
     return tuple(args)
 
-# 判断函数的参数是否是命名关键字参数，如果是，返回True
+# 判断函数的参数是否是命名关键字参数，对应于*或*args传入的参数，如果是，返回True
 def has_named_kw_args(fn):
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.KEYWORD_ONLY:
             return True
 
-# 判断函数的参数是否是关键字参数，如果是，返回True
+# 判断函数的参数是否是关键字参数，对应于**kw传入的参数，如果是，返回True
 def has_var_kw_arg(fn):
     params = inspect.signature(fn).parameters
     for name, param in params.items():
@@ -111,6 +111,22 @@ class RequestHandler(object):
     # 这里request参数是RequestHandler作为函数时所接收的参数
     # 在aiohttp框架下，所有handler函数都只有一个参数即request，可参考http://aiohttp.readthedocs.io/en/stable/web.html#aiohttp-web-handler
     # 同时，request参数是作为一个实例传入的，可以通过调用实例属性获得http请求的全部信息，可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#request
+    # 这个__call__()方法花了很长时间，依然不能很好理解，但还是尽力做一些解释：
+    # 首先，可以确定的是这个__call__()的实现方式不是唯一的，廖老师的代码是实现方式之一。
+    # 其次，廖老师这里首先根据request判断所调用的函数的参数类型，
+    # 比如当我们请求/manage/users时，这里会判断manage_users的参数(*,page='1')的类型是否属于关键字参数，
+    # 可以发现其属于命名关键字参数，那么再开始判断是post还是get类型，并分别记录body和query string，
+    # 至此，还能理解，但之后的逻辑变得非常奇怪
+    # 在完成对关键字参数的处理后，并不是去执行对非关键字参数的处理，而是判断此时是否获得了记录（即post的boby或get的query string），
+    # 1,如果没有记录（当然对那些参数类型不是关键字参数的处理函数肯定此时就不可能获得记录了），那么开始获取request的match_info值，
+    # （如果按照廖老师的这种判断，就有一个奇怪的地方，似乎是说request的query string和match_info是不共存的，即有你没我，但显然不是这样的）。
+    # 2,如果有了记录，那肯定参数类型是关键字参数，但命名关键字参数才是重要的，我们删除其他关键字参数
+    # （这一步搞不懂有什么必要性，所有的处理函数都不会执行这一段代码）。
+    # 2,接着还是奇怪的处理：用match_info将query string的记录覆盖(似乎是match_info的优先级更高？)
+    # 至此，奇怪的逻辑结束，此后部分回归正常
+    # 将request参数添加到参数记录中
+    # 检查是否有参数遗漏
+    # 执行处理函数
     async def __call__(self, request):
         kw = None
         # 检查fn的参数
@@ -172,24 +188,28 @@ class RequestHandler(object):
                     logging.warning('Duplicate arg name in named arg and kw args: %s' % k)
                 kw[k] = v
         if self._has_request_arg:
+            # 将request参数添加到参数记录中
             kw['request'] = request
-        # check required kw:
+        # 检查是否有无默认值的命名关键字参数遗漏
         if self._required_kw_args:
             for name in self._required_kw_args:
                 if not name in kw:
                     return web.HTTPBadRequest('Missing argument: %s' % name)
         logging.info('call with args: %s' % str(kw))
         try:
+            # 执行处理函数
             r = await self._func(**kw)
             return r
         except APIError as e:
             return dict(error=e.error, data=e.data, message=e.message)
 
+# 添加一个静态路径到app中
 def add_static(app):
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
     app.router.add_static('/static/', path)
     logging.info('add static %s => %s' % ('/static/', path))
 
+# 将某一个请求方法、路径和响应函数添加到app中，以响应request
 def add_route(app, fn):
     method = getattr(fn, '__method__', None)
     path = getattr(fn, '__route__', None)
@@ -199,8 +219,11 @@ def add_route(app, fn):
         fn = asyncio.coroutine(fn)
     logging.info('add route %s %s => %s(%s)' % (method, path, fn.__name__, ', '.join(inspect.signature(fn).parameters.keys())))
     app.router.add_route(method, path, RequestHandler(app, fn))
+    # add_route()方法用于将请求方法、路径和响应函数绑定并添加到app中
 
+# 将所有响应函数添加到app中，module_name是响应函数所在的py文件名，即‘handlers’
 def add_routes(app, module_name):
+    # rfind() 返回字符串最后一次出现的位置，如果没有匹配项则返回-1
     n = module_name.rfind('.')
     if n == (-1):
         mod = __import__(module_name, globals(), locals())
@@ -208,11 +231,15 @@ def add_routes(app, module_name):
         name = module_name[n+1:]
         mod = getattr(__import__(module_name[:n], globals(), locals(), [name]), name)
     for attr in dir(mod):
+        # 排除掉内置方法
         if attr.startswith('_'):
             continue
         fn = getattr(mod, attr)
+        # 排除掉非函数部分
         if callable(fn):
             method = getattr(fn, '__method__', None)
             path = getattr(fn, '__route__', None)
+            # 筛选出拥有method和path的响应函数
             if method and path:
+                # 将响应函数添加到app
                 add_route(app, fn)
