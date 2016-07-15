@@ -18,6 +18,9 @@ from jinja2 import Environment, FileSystemLoader
 import orm
 from coroweb import add_routes, add_static
 
+# 初始化jinja2的目的是给app添加一个'__templating__'属性，这个属性是一个Environment实例
+# 这个实例包含了对html模板路径、内容的设置，另外还添加了filters
+# 具体可参加http://docs.jinkan.org/docs/jinja2/api.html?highlight=environment#jinja2.Environment
 def init_jinja2(app, **kw):
     logging.info('init jinja2...')
     options = dict(
@@ -111,6 +114,11 @@ def datetime_filter(t):
 
 async def init(loop):
     await orm.create_pool(loop=loop, host='localhost', port=3306, user='www-data', password='www-data', db='awesome')
+    # 这里middlewares就是一个大型装饰器
+    # for factory in reversed(self._middlewares):
+    #   handler = yield from factory(app, handler)
+    # resp = yield from handler(request)
+    # 这里相当于反复对handler进行装饰，reversed(self._middlewares)表示装饰时是倒序包装的，这样执行时就是按照顺序执行
     app = web.Application(loop=loop, middlewares=[
         logger_factory, response_factory
     ])
