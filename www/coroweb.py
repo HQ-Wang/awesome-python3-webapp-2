@@ -109,8 +109,10 @@ class RequestHandler(object):
 
     # __call__()方法，可以将实例当作函数来调用，如rh = RequestHandler(app,fn); rh(request);
     # 这里request参数是RequestHandler作为函数时所接收的参数
-    # 在aiohttp框架下，所有handler函数都只有一个参数即request，可参考http://aiohttp.readthedocs.io/en/stable/web.html#aiohttp-web-handler
-    # 同时，request参数是作为一个实例传入的，可以通过调用实例属性获得http请求的全部信息，可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#request
+    # 在aiohttp框架下，所有handler函数都只有一个参数即request，
+    # 可参考http://aiohttp.readthedocs.io/en/stable/web.html#aiohttp-web-handler;
+    # 同时，request参数是作为一个实例传入的，可以通过调用实例属性获得http请求的全部信息，
+    # 可参考http://aiohttp.readthedocs.io/en/stable/web_reference.html#request;
     # 这个__call__()方法花了很长时间，依然不能很好理解，但还是尽力做一些解释：
     # 首先，可以确定的是这个__call__()的实现方式不是唯一的，廖老师的代码是实现方式之一。
     # 其次，廖老师这里首先根据request判断所调用的函数的参数类型，

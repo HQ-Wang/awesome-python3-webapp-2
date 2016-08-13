@@ -119,9 +119,7 @@ async def init(loop):
     #   handler = yield from factory(app, handler)
     # resp = yield from handler(request)
     # 这里相当于反复对handler进行装饰，reversed(self._middlewares)表示装饰时是倒序包装的，这样执行时就是按照顺序执行
-    app = web.Application(loop=loop, middlewares=[
-        logger_factory, response_factory
-    ])
+    app = web.Application(loop=loop, middlewares=[logger_factory, response_factory])
     init_jinja2(app, filters=dict(datetime=datetime_filter))
     add_routes(app, 'handlers')
     add_static(app)
